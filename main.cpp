@@ -1,40 +1,47 @@
-#include <functional>
+#include <array>
 #include <iostream>
 #include <boost/asio.hpp>
 
-class printer {
-public:
-    printer(boost::asio::io_context& io) : timer_(io, boost::asio::chrono::seconds(1)), count_(0) {
-        //lambda
-        timer_.async_wait([this](const boost::system::error_code& /*err*/) -> void {
-            this->print();
-        });
+using boost::asio::ip::tcp;
+
+int main(int argc, char* argv[])
+{
+  try
+  {
+    if (argc != 2)
+    {
+      std::cerr << "Usage: client <host>" << std::endl;
+      return 1;
     }
-    ~printer() {
-        std::cout <<"Final count is "<< count_ << std::endl;
+
+    boost::asio::io_context io_context;
+
+    tcp::resolver resolver(io_context);
+    tcp::resolver::results_type endpoints =
+      resolver.resolve(argv[1], "daytime");
+
+    tcp::socket socket(io_context);
+    boost::asio::connect(socket, endpoints);
+
+    for (;;)
+    {
+      std::array<char, 128> buf;
+      boost::system::error_code error;
+
+      size_t len = socket.read_some(boost::asio::buffer(buf), error);
+
+      if (error == boost::asio::error::eof)
+        break; // Connection closed cleanly by peer.
+      else if (error)
+        throw boost::system::system_error(error); // Some other error.
+
+      std::cout.write(buf.data(), len);
     }
-    void print() {
-        if (count_ < 5) {
-            std::cout<< count_ <<std::endl;
-            ++count_;
+  }
+  catch (std::exception& e)
+  {
+    std::cerr << e.what() << std::endl;
+  }
 
-            timer_.expires_at(timer_.expiry() + boost::asio::chrono::seconds(1));
-            //lambda
-            timer_.async_wait([this](const boost::system::error_code& /*err*/) -> void {
-               this->print();
-            });
-        }
-
-    }
-private:
-    boost::asio::steady_timer timer_;
-    int count_;
-};
-
-int main() {
-    boost::asio::io_context io;
-    printer p(io);
-    io.run();
-
-    return 0;
+  return 0;
 }
